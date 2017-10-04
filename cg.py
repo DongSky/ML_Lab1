@@ -1,20 +1,59 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import random
 import math
 #some essential parameters
-eps=1e-8
+eps=1e-4
 alpha=3e-2
 train_size=0
 regulaztion_num=1
-panel=1
-#this is the loss function
+panel=5e-2
+#define the loss function
 def Eriri(y,calc_y):
     loss=0
     for i in range(0,len(y)):
+        #print("%f  %f"%(y[i],calc_y[i]))
         loss+=(y[i]-calc_y[i])**2
     return 0.5*loss/len(calc_y)
-#main procedure
+def Eriri_with_panelty(y,calc_y,theta):
+    loss=0
+    theta_=np.array(theta).reshape(1,order+1)[0]
+    for i in range(0,len(y)):
+        loss+=(y[i]-calc_y[i])**2
+    loss=0.5*loss/len(calc_y)
+    for i in range(0,len(theta_)):
+        loss+=panel*theta_[i]*theta_[i]
+    return loss
+#define the CG process
+def cg(y,matA):
+    theta=np.array([0 for i in y]).reshape(len(y),1)
+    y=np.mat(y.reshape(y.shape[0],1))
+    k=0
+    temp=np.dot(matA,theta)
+    r0=y-temp
+    eriri=0
+    while True:
+        k+=1
+        if k==1:
+            p1=r0
+            alpha=float(np.dot(r0.T,r0)/np.dot(np.dot(p1.T,matA),p1))
+            theta=theta+alpha*p1
+            r1=r0-alpha*np.dot(matA,p1)
+            r0=r1
+            r=r1
+        else:
+            p1=r1+float(np.dot(r1.T,r1)/np.dot(r0.T,r0)) * p1
+            alpha=float(np.dot(r1.T,r1)/np.dot(np.dot(p1.T,matA),p1))
+            theta=theta+alpha*p1
+            r2=r1-alpha*np.dot(matA,p1)
+            r0=r1
+            r1=r2
+            r=r2
+        if(float(r.T*r)<eps):
+            break
+        print(r0)
+    return theta
 if __name__=="__main__":
     #generate argument list, users can set the order of the polynomial before the program starts, default is 9
     parser=argparse.ArgumentParser(description="Linear Curve Fit")
@@ -22,18 +61,18 @@ if __name__=="__main__":
     result=parser.parse_args()
     order=result.order
     #initialize matplotlib to display the curve
-    fig=plt.figure()
-    ax=fig.add_subplot(111)
-    #read the training data from file
+    plt.figure()
     xa=[]
     ya=[]
+    #read the training data from file
     fi=open("train.txt","r")
     lines=fi.readlines()
+    train_size=len(lines)
     for line in lines:
         piece=line.split(",")
         xa.append(float(piece[0]))
         ya.append(float(piece[1]))
-    ax.plot(xa,ya,color='m',linestyle='',marker='.')
+    plt.plot(xa,ya,color='m',linestyle='',marker='.')
     #set the regulaztion_num to change every x into [-1,1]
     maxn=0.0
     for i in xa:
@@ -47,8 +86,8 @@ if __name__=="__main__":
         for j in range(0,len(xa)):
             s+=(xa[j]**i)
         Mat.append(s)
-    MatA=[]
     #calculate X.T * X matrix(named as MatA)
+    MatA=[]
     for i in range(0,order+1):
         row=Mat[i:i+order+1]
         MatA.append(row)
@@ -61,20 +100,25 @@ if __name__=="__main__":
             ty+=ya[j]*(xa[j]**i)
         MatB.append(ty)
     MatB=np.array(MatB)
-    #the parameter w(named as NewMat) can be calculated by inv(X.T * X) * (X.T * Y) when X.T*X is positive definite, else it should be calculated as a similar solution
-    NewMat=np.linalg.solve(MatA,MatB)
-    print(NewMat)
+
+    print(MatA)
+    #calculate w with cg
+    theta_new=cg(MatB,MatA)
+    print(theta_new.reshape(1,order+1)[0])
+    #define f(x) to calculate output
+    def f(x):
+        y=0.0
+        for i in range(0,order+1):
+            y+=theta_new[i]*(x**i)
+        return y
     #draw the curve in matplotlib using a lot of points
     xxa=np.arange(-1.9,1.9,0.01)
+    #initialize the x data into [-1,1] to get the correct output
     x_new=xxa/regulaztion_num
     yya=[]
     for i in range(0,len(xxa)):
-        y=0
-        for j in range(0,order+1):
-            dy=(x_new[i]**j)
-            dy*=NewMat[j]
-            y+=dy
-        yya.append(y)
+        yya.append(float(f(x_new[i])))
+    yya=np.array(yya)
 
     x_test=[]
     y_test=[]
@@ -90,16 +134,10 @@ if __name__=="__main__":
     #initialize the x data into [-1,1] to get the correct output
     x_test=np.array(x_test)/regulaztion_num
     for i in range(0,len(x_test)):
-        y=0
-        for j in range(0,order+1):
-            dy=(x_test[i]**j)
-            dy*=NewMat[j]
-            y+=dy
-        y_test_linear.append(y)
-    #calculate the loss of test data and output it
+        y_test_linear.append(float(f(x_test[i])))
+    #calculate the loss in test data of cg
     eriri_test_linear=Eriri(y_test,y_test_linear)
-    print("linear fit:"+str(eriri_test_linear))
+    print("loss:"+str(eriri_test_linear))
     #show the curve
-    ax.plot(xxa,yya,color='g',linestyle='-',marker="")
-    ax.legend()
+    plt.plot(xxa,yya,color='g',linestyle='-',marker="")
     plt.show()
